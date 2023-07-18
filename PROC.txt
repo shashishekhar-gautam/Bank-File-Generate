@@ -1,0 +1,257 @@
+CREATE OR REPLACE procedure AFL_RECEIPT_LOCKBOX
+is
+EMSG VARCHAR2(2000);
+h_location varchar2(250);
+STATUS NUMBER;
+cursor c1 is select * from XX_AR_RECEIPTS_UPLOaD_T where status in ('N','R','E') for update of status;
+ v_attribute_record             AR_RECEIPT_API_PUB.attribute_rec_type;
+ C NUMBER;
+ t_number varchar2(250);
+ l_CUSTOMER_SITE_USE_ID number;
+ L_BON VARCHAR2(250);
+ L_LOCK_BN VARCHAR2(250);
+ BON VARCHAR2(250);
+ LBS VARCHAR2(20);
+ 
+  
+   
+procedure afl_lock_receipt_WRITE
+is
+l_batch_name varchar2(250);
+l_invoice_number varchar2(250);
+l_receipt_date varchar2(250);
+l_comments varchar2(250);
+L_amount number;
+l_receipt_method_name varchar2(250);
+l_check_number varchar2(250);
+l_org_id number;
+l_deposit_date varchar2(250);
+l_lockbox_number varchar2(250);
+l_item_number varchar2(250);
+l_remittance_amount number;
+l_customer_number varchar2(250);
+l_amount_applied number;
+l_gl_date VARCHAR2(250);
+l_attribute_category varchar2(250);
+verrmsg varchar2(250);
+l_bill_to_location varchar2(250);
+l_attribute1 varchar2(250);
+l_attribute2 varchar2(250);
+l_attribute3 varchar2(250);
+l_attribute4 varchar2(250);
+l_attribute5 varchar2(250);
+l_attribute6 varchar2(250);
+vMessage varchar2(250);
+l_attribute7 varchar2(250);
+L_COMMENT VARCHAR2(250);
+L_ORIGINATION VARCHAR2(250);
+n number;
+i number:=0;
+TYPE L_REC_TYPE IS RECORD(L1 VARCHAR2(4000));
+TYPE L_REC_TBL_TYPE IS TABLE OF L_REC_TYPE INDEX BY BINARY_INTEGER ;
+X_L_REC_TBL_TYPE L_REC_TBL_TYPE;
+fileHandler  utl_file.file_type;
+data varchar2(4000);
+cursor c1 is
+select *
+ from XX_AR_RECEIPTS_UPLOAD_T WHERE STATUS IN ('S')for update of status;
+BEGIN
+filehandler := utl_file.fopen('/afltst/afltstappl/ar/11.5.0/bin','LOCKBOX.DAT','W');
+FOR erec in c1 loop
+i:=i+1;
+l_batch_name :=erec.batch_name;
+l_invoice_number :=erec.invoice_number;
+l_receipt_date :=erec.receipt_date;
+l_receipt_method_name :=erec.receipt_method;
+l_check_number :=erec.receipt_number;
+l_lockbox_number :=erec.lockbox_number;
+l_item_number :='1';
+l_remittance_amount:=to_char(erec.receipt_amount) ;
+l_customer_number:=erec.customer_number;
+l_amount_applied :=to_char(erec.applied_amount);
+L_ATTRIBUTE1:=to_char(erec.cheque_num);
+L_ATTRIBUTE2:=to_char(erec.cheque_date);
+L_ATTRIBUTE3:=erec.drawn_on_bank;
+L_ATTRIBUTE4:=erec.bank_branch;
+l_attribute5:=to_char(erec.tds_amount);
+l_attribute6:=erec.pay_in_slip_NUM;
+l_attribute_category:= erec.attribute_category;
+l_bill_to_location :=erec.bill_to_location_id;
+l_comment:=erec.comments;
+L_BON:=EREC.ORIGINATION_NUMBER;
+
+
+
+DATA:=TO_CHAR((RPAD('A',10)||rpad( '2',10  )||RPAD(l_item_number,40)||rpad(l_deposit_date,20)||rpad(l_lockbox_number,20)||rpad(l_origination,20)||rpad(l_customer_number,20)||rpad(l_batch_name,30)||rpad(l_bill_to_location,25)||rpad(l_check_number,25)||rpad(l_receipt_date,20)||rpad(l_gl_date,20)||rpad(l_remittance_amount,15)||rpad(l_comments,50)||rpad(l_receipt_method_name,25)||rpad(l_attribute_category,25)||rpad(l_attribute1,50)||rpad(l_attribute2,50)||rpad(l_attribute3,50)||rpad(l_attribute4,50)||rpad(l_attribute5,50)||rpad(l_attribute6,50)||rpad(l_attribute7,50)||rpad(l_invoice_number,50)||rpad(l_amount_applied,20)));
+X_L_REC_TBL_TYPE(I).L1:=data;
+end loop;
+
+
+UTL_FILE.PUTF(fileHandler,rpad('1',10)||rpad(l_lockbox_number,30)||rpad(L_BON,10));
+ UTL_FILE.PUTF(fileHandler,'\n');
+for n in 1..i loop
+ UTL_FILE.PUTF(fileHandler,X_L_REC_TBL_TYPE(n).L1);
+
+ UTL_FILE.PUTF(fileHandler,'\n');
+ 
+update  XX_AR_RECEIPTS_UPLOAD_T set status='WRITTEN' WHERE CURRENT OF C1;
+ end loop;
+
+UTL_FILE.FCLOSE(fileHandler);
+
+EXCEPTION
+WHEN utl_file.invalid_mode THEN
+    vErrMsg := SQLERRM;
+    vMessage :=  '-20051, Invalid Option';
+      WHEN utl_file.invalid_path THEN
+    vErrMsg := SQLERRM;
+    vMessage :=  '-20052, Invalid Path';
+    WHEN utl_file.invalid_filehandle THEN
+    vErrMsg := SQLERRM;
+    vMessage := '-20053, Invalid Filehandle';
+    WHEN utl_file.write_error THEN
+    vErrMsg := SQLERRM;
+    WHEN utl_file.internal_error THEN
+    vErrMsg := SQLERRM;
+    --WHEN utl_file.invalid_path THEN
+    --  vErrMsg := SQLERRM||'-20052'||'Invalid File Location';
+    fnd_file.put_line (FND_FILE.log,VERRMSG);
+
+
+end;
+  
+begin
+
+
+fnd_client_info.set_org_context(102);  
+fnd_global.apps_initialize( 1111,50318,222); 
+for i in c1 loop
+dbms_output.put_line('into loop');
+c:=0;
+            
+STATUS:=1;
+                select count(customer_name) into c from ra_customers where customer_name like i.customer_name ;
+                         if c <1 then
+                                EMSG:=EMSG||'customer does not exist ,';
+                                STATUS:=0;
+                          end if;
+                 
+                select count(customer_number) into c from ra_customers where customer_number like i.customer_number;
+                    if c<1 then 
+                            EMSG:=EMSG||'invalid customer number or customer name ,';
+                            STATUS:=0;
+                            end if;
+                            
+                  SELECT count(receipt_method_id) INTO c FROM ar_receipt_methods
+                WHERE NAME = i.receipt_method;
+                        if c<1 then
+                            EMSG:=EMSG||'invalid receipt method name  ,';
+                            STATUS:=0;
+                            end if;
+                            
+                            
+begin  
+       select hcsua.location,hcsua.SITE_USE_ID  into h_location,l_CUSTOMER_SITE_USE_ID from
+  hz_cust_site_uses_all hcsua,
+  hz_cust_acct_sites_all hcasa,
+  hz_cust_accounts hca
+  where
+  hca.CUST_ACCOUNT_ID=hcasa.CUST_ACCOUNT_ID
+  and
+  hcasa.cust_acct_site_id=hcsua.cust_acct_site_id
+  and
+  hca.account_number=i.customer_number
+  and
+  hcsua.site_use_code='BILL_TO';
+  exception when no_data_found THEN
+   EMSG:=EMSG||' invalid location  ,';
+   STATUS:=0;
+ end;
+ 
+ if h_location<>i.location then
+        EMSG:='invalid location   ,';
+        end if;
+        
+        begin
+        select RCTA.trx_number into t_number from ra_customer_trx_all RCTA,RA_CUSTOMERS RC WHERE
+        RCTA.BILL_TO_CUSTOMER_ID=RC.CUSTOMER_ID AND
+        rc.CUSTOMER_NAME=I.CUSTOMER_nAME AND
+        RCTA.trx_number like i.invoice_number;      
+        exception
+         when no_data_found then
+                EMSG:=EMSG||'invalid trx number  ';
+                STATUS:=0;
+                END;
+                
+                
+       BEGIN
+        SELECT
+        AL.LOCKBOX_NUMBER,
+        AL.BANK_ORIGINATION_NUMBER 
+        INTO
+        l_LOCK_BN,
+        BON
+        FROM
+        AR_LOCKBOXES AL,
+        AR_RECEIPT_METHODS ARM
+        WHERE
+        AL.RECEIPT_METHOD_ID=ARM.RECEIPT_METHOD_ID
+        AND
+        ARM.NAME LIKE I.RECEIPT_METHOD;
+        EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            EMSG:=EMSG||'LOCK BOX NOT DEFINED FOR THIS RECEIPT METHOD ';
+            STATUS:=0;
+            END;
+            
+            
+            BEGIN
+            SELECT 
+            BILL_TO_SITE_USE_ID
+            INTO 
+            LBS
+            FROM
+            RA_CUSTOMER_TRX_PARTIAL_V 
+            WHERE
+            TRX_NUMBER=I.INVOICE_NUMBER
+            AND COMPLETE_FLAG='Y';
+            EXCEPTION
+                WHEN NO_DATA_FOUND THEN
+                    EMSG:=EMSG||'SITE USE ID NOT FOUDN';
+                    WHEN OTHERS THEN
+                        EMSG:=EMSG||'PLEASE CHECK TRX NUMBER EXIST OR IS COMPLETE  ';
+                        END;
+                 
+            
+                        
+            IF STATUS=1 THEN
+            
+                      
+           
+            UPDATE  XX_AR_RECEIPTS_UPLOAD_T SET 
+            STATUS='S'
+            ,ORIGINATION_NUMBER=BON
+            ,BILL_TO_LOCATION_ID=LBS
+            ,LOCKBOX_NUMBER=  l_LOCK_BN
+            ,ERR_MSG=NULL
+            ,reject_code='validated' 
+             WHERE current of c1;      
+            
+            else
+            fnd_file.put_line (FND_FILE.log,Emsg);
+            fnd_file.put_line (FND_FILE.log,'------------------------------------');
+            UPDATE XX_AR_RECEIPTS_UPLOAD_T SET STATUS='E',ERR_MSG=EMSG,reject_code='validation_error' WHERE current of c1;
+            END IF;
+                     
+            end LOOP;
+            commit;
+            
+            
+            afl_lock_receipt_WRITE;
+            END;
+  
+                 
+
+        
+ 
+
